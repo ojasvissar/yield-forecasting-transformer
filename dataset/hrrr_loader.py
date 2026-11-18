@@ -7,9 +7,9 @@ for crop yield forecasting. Includes both short-term (daily) and long-term
 (monthly) weather variables.
 """
 
-import concurrent.futures
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import List, Tuple
@@ -63,8 +63,8 @@ class HRRRDataset(Dataset):
         # Consider the first 28 days in each month
         self.day_range = list(range(1, 29))
         self.select_cols = self.WEATHER_FEATURES
+        # threads are created per call: an executor stored on self can't be pickled into DataLoader workers
         self.num_workers = num_workers
-        self.executor = ThreadPoolExecutor(max_workers=num_workers)
 
         self.fips_codes = []
         self.years = []
@@ -148,12 +148,8 @@ class HRRRDataset(Dataset):
 
         for file_paths in temporal_file_paths:
             # Parallel file reading
-            futures = [
-                self.executor.submit(self._read_csv_file, fp) 
-                for fp in file_paths
-            ]
-            concurrent.futures.wait(futures)
-            dfs = [f.result() for f in futures]
+            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                dfs = list(executor.map(self._read_csv_file, file_paths))
 
             df = pd.concat(dfs, ignore_index=True)
 

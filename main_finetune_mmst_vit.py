@@ -87,8 +87,8 @@ def get_args_parser():
                         help='path where to save, empty for no saving')
     parser.add_argument('--log_dir', default='./output_dir/mmst_vit',
                         help='path where to tensorboard log')
-    parser.add_argument('--device', default='cuda',
-                        help='Device to use for training/testing')
+    parser.add_argument('--device', default=misc.default_device(),
+                        help='Device to use for training/testing (default: cuda, then mps, then cpu)')
     parser.add_argument('--seed', default=0, type=int,
                         help='Random seed for reproducibility')
 
@@ -397,7 +397,8 @@ def train_one_epoch(model: torch.nn.Module,
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad()
 
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
 
         metric_logger.update(loss=loss_value)
 
