@@ -214,6 +214,15 @@ def save_on_master(*args, **kwargs):
         torch.save(*args, **kwargs)
 
 
+def default_device():
+    """Best available device: CUDA, then Apple MPS, then CPU."""
+    if torch.cuda.is_available():
+        return 'cuda'
+    if torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
+
+
 def init_distributed_mode(args):
     if args.dist_on_itp:
         args.rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
@@ -253,7 +262,8 @@ class NativeScalerWithGradNormCount:
     state_dict_key = "amp_scaler"
 
     def __init__(self):
-        self._scaler = torch.cuda.amp.GradScaler()
+        # loss scaling only matters for CUDA mixed precision; a disabled scaler is a no-op elsewhere
+        self._scaler = torch.amp.GradScaler('cuda', enabled=torch.cuda.is_available())
 
     def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
         self._scaler.scale(loss).backward(create_graph=create_graph)
