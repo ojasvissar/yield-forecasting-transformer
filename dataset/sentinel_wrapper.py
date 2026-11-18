@@ -5,7 +5,8 @@ from einops import rearrange
 from PIL import Image
 import torchvision.transforms as transforms
 
-from dataset.sentinel_loader import Sentinel_Dataset
+from dataset.hrrr_loader import HRRRDataset
+from dataset.sentinel_loader import SentinelDataset
 
 
 class Sentinel_Subset(Dataset):
@@ -58,7 +59,7 @@ class SimCLRDataTransform(object):
         return data_transforms
 
 
-def get_data_loader(X, Y, batch_size=128, num_workers=8):
+def get_data_loader(X, Y, batch_size=128, num_workers=0):
     transform = SimCLRDataTransform()
     dataset = Sentinel_Subset(X, Y, transform)
     data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, drop_last=False)
@@ -69,14 +70,11 @@ def get_data_loader(X, Y, batch_size=128, num_workers=8):
 
 if __name__ == '__main__':
     root_dir = "/mnt/data/Tiny CropNet"
-    train = "./../data/soybean_train.json"
-    dataset = Sentinel_Dataset(root_dir, train)
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=1)
+    train = "./data/soybean_train.json"
+    x, _, _ = SentinelDataset(root_dir, train)[0]
+    ys, _, _, _ = HRRRDataset(root_dir, train)[0]
 
-    it = iter(train_loader)
-    x, f, y = next(it)
-
-    loader = get_data_loader(x)
-    for xi, xj in loader:
-        print(xi.shape)
-        print(xj.shape)
+    loader = get_data_loader(x[None], ys[None], batch_size=32)
+    for xi, xj, y in loader:
+        print(xi.shape, xj.shape, y.shape)
+        break
