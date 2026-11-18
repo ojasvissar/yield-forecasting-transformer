@@ -186,13 +186,13 @@ def main(args):
 
         # val
         sampler_sentinel_val = torch.utils.data.DistributedSampler(
-            dataset_sentinel_val, num_replicas=num_tasks, rank=global_rank, shuffle=True
+            dataset_sentinel_val, num_replicas=num_tasks, rank=global_rank, shuffle=False
         )
         sampler_hrrr_val = torch.utils.data.DistributedSampler(
-            dataset_hrrr_val, num_replicas=num_tasks, rank=global_rank, shuffle=True
+            dataset_hrrr_val, num_replicas=num_tasks, rank=global_rank, shuffle=False
         )
         sampler_usda_val = torch.utils.data.DistributedSampler(
-            dataset_usda_val, num_replicas=num_tasks, rank=global_rank, shuffle=True
+            dataset_usda_val, num_replicas=num_tasks, rank=global_rank, shuffle=False
         )
 
         print("Sampler_sentinel_val = %s" % str(sampler_sentinel_val))
@@ -232,7 +232,7 @@ def main(args):
 
     # val
     data_loader_sentinel_val = torch.utils.data.DataLoader(
-        dataset_sentinel_val, sampler=sampler_sentinel_train,
+        dataset_sentinel_val, sampler=sampler_sentinel_val,
         batch_size=1,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
@@ -240,7 +240,7 @@ def main(args):
     )
 
     data_loader_hrrr_val = torch.utils.data.DataLoader(
-        dataset_hrrr_val, sampler=sampler_hrrr_train,
+        dataset_hrrr_val, sampler=sampler_hrrr_val,
         batch_size=1,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
@@ -248,7 +248,7 @@ def main(args):
     )
 
     data_loader_usda_val = torch.utils.data.DataLoader(
-        dataset_usda_val, sampler=sampler_usda_train,
+        dataset_usda_val, sampler=sampler_usda_val,
         batch_size=1,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
@@ -292,22 +292,17 @@ def main(args):
     misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
 
     if args.eval:
-        evaluate(model, data_loader_sentinel_train, data_loader_hrrr_train, data_loader_usda_train, device)
+        eval_stats = evaluate(model, data_loader_sentinel_val, data_loader_hrrr_val, data_loader_usda_val, device)
+        save_eval(args, eval_stats)
         exit(0)
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
-        if args.distributed:
-            # train
-            data_loader_sentinel_train.sampler.set_epoch(epoch)
-            data_loader_hrrr_train.sampler.set_epoch(epoch)
-            data_loader_usda_train.sampler.set_epoch(epoch)
-
-            # val
-            data_loader_sentinel_val.sampler.set_epoch(epoch)
-            data_loader_hrrr_val.sampler.set_epoch(epoch)
-            data_loader_usda_val.sampler.set_epoch(epoch)
+        # reshuffle every epoch; the three train samplers share a seed, so they stay aligned
+        data_loader_sentinel_train.sampler.set_epoch(epoch)
+        data_loader_hrrr_train.sampler.set_epoch(epoch)
+        data_loader_usda_train.sampler.set_epoch(epoch)
 
         train_stats = train_one_epoch(
             model, data_loader_sentinel_train, data_loader_hrrr_train, data_loader_usda_train,
@@ -316,7 +311,8 @@ def main(args):
 
         if args.output_dir and (epoch % args.save_freq == 0 or epoch + 1 == args.epochs):
             # evaluate
-            evaluate(model, data_loader_sentinel_val, data_loader_hrrr_val, data_loader_usda_val, device)
+            eval_stats = evaluate(model, data_loader_sentinel_val, data_loader_hrrr_val, data_loader_usda_val, device)
+            save_eval(args, eval_stats, epoch=epoch, log_writer=log_writer)
 
             misc.save_model(
                 args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
@@ -429,6 +425,7 @@ def evaluate(model: torch.nn.Module, data_loader_sentinel: Iterable, data_loader
 
     true_labels = torch.empty(0)
     pred_labels = torch.empty(0)
+    fips_codes = []
 
     total_step = len(data_loader_sentinel) - 1
     for data_iter_step, (x, y, z) in enumerate(zip(data_loader_sentinel, data_loader_hrrr, data_loader_usda)):
@@ -455,6 +452,7 @@ def evaluate(model: torch.nn.Module, data_loader_sentinel: Iterable, data_loader
 
         z_hat = model(x, ys=ys, yl=yl)
 
+        fips_codes.append(fips)
         true_labels = torch.cat([true_labels, z.detach().cpu()], dim=0)
         pred_labels = torch.cat([pred_labels, z_hat.detach().cpu()], dim=0)
 
@@ -466,7 +464,28 @@ def evaluate(model: torch.nn.Module, data_loader_sentinel: Iterable, data_loader
 
     global best_metrics
     best_metrics = [min(best_metrics[0], rmse), max(best_metrics[1], r2), max(best_metrics[2], corr)]
-    print("Metrics: RMSE: {}  R_Squared: {}  Corr: {}".format(f"{best_metrics[0]:.2f}", f"{ best_metrics[1]:.2f}", f"{best_metrics[2]:.2f}"))
+    print("Metrics: RMSE: {:.2f}  R_Squared: {:.2f}  Corr: {:.2f}".format(rmse, r2, corr))
+    print("Best so far: RMSE: {:.2f}  R_Squared: {:.2f}  Corr: {:.2f}".format(*best_metrics))
+
+    return {'rmse': float(rmse), 'r2': float(r2), 'corr': float(corr),
+            'fips': fips_codes, 'true': true_labels.tolist(), 'pred': pred_labels.tolist()}
+
+
+def save_eval(args, eval_stats, epoch=None, log_writer=None):
+    """Append metrics to metrics.txt, write per-county yields to predictions.csv, log val_* scalars."""
+    if not (args.output_dir and misc.is_main_process()):
+        return
+    row = {k: eval_stats[k] for k in ('rmse', 'r2', 'corr')}
+    row['epoch'] = epoch
+    with open(os.path.join(args.output_dir, "metrics.txt"), mode="a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
+    with open(os.path.join(args.output_dir, "predictions.csv"), mode="w", encoding="utf-8") as f:
+        f.write("epoch,fips,true_yield,pred_yield\n")
+        for fips, true, pred in zip(eval_stats['fips'], eval_stats['true'], eval_stats['pred']):
+            f.write(f"{'' if epoch is None else epoch},{fips},{true},{pred}\n")
+    if log_writer is not None and epoch is not None:
+        for k in ('rmse', 'r2', 'corr'):
+            log_writer.add_scalar(f'val_{k}', eval_stats[k], epoch)
 
 
 if __name__ == '__main__':
