@@ -64,16 +64,19 @@ yield-forecasting-transformer/
 
 ## Installation
 
-```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or
-.\venv\Scripts\activate   # Windows
+Use a plain virtual environment so every package comes from pip:
 
-# Install dependencies
+```bash
+python -m venv venv
+source venv/bin/activate      # Windows: .\venv\Scripts\activate
 pip install -r requirements.txt
+python test_model.py          # smoke test, no data needed
 ```
+
+> **Conda users:** don't install into a conda base environment. pip's `torch` bundles its own
+> OpenMP runtime and conda's `numpy` loads another, which aborts with
+> `OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized`.
+> Create the venv from any Python 3.10+ (including conda's) and install with pip as above.
 
 ## Usage
 
