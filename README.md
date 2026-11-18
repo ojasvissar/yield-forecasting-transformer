@@ -13,6 +13,8 @@ This project implements the MMST-ViT (Multi-Modal Spatio-Temporal Vision Transfo
 
 ## Architecture
 
+![MMST-ViT architecture](docs/mmst-vit-arch.png)
+
 The model consists of three main components:
 
 1. **PVT-SimCLR Backbone**: A Pyramid Vision Transformer pre-trained with contrastive learning (SimCLR) for extracting visual features from satellite imagery
@@ -44,18 +46,20 @@ yield-forecasting-transformer/
 ├── util/                       # Utility functions
 │   ├── misc.py                 # Distributed training, logging, checkpointing
 │   ├── metrics.py              # Evaluation metrics (RMSE, R², PCC)
-│   ├── lr_sched.py             # Learning rate schedulers
-│   └── lars.py                 # LARS optimizer
+│   └── lr_sched.py             # Learning rate schedulers
 │
 ├── config/                     # Configuration builders
-│   └── build_config_soybean.py # Soybean dataset configuration
+│   └── build_config_soybean.py # Builds the data index files
 │
 ├── data/                       # Dataset index files
 │   ├── soybean_train.json      # Training data index
 │   └── soybean_val.json        # Validation data index
 │
-└── input/                      # Input metadata
-    └── county_info.csv         # County FIPS codes and metadata
+├── input/                      # County lists used to build the index
+│   └── county_info_{2021,2022}.csv
+│
+├── docs/                       # Figures from the paper
+└── papers/                     # Reference paper (ICCV 2023)
 ```
 
 ## Installation
@@ -155,11 +159,11 @@ python test_model.py
 If you use this code, please cite:
 
 ```bibtex
-@article{mmst_vit,
-  title={Multi-Modal Spatio-Temporal Vision Transformer for Crop Yield Forecasting},
-  author={...},
-  journal={...},
-  year={...}
+@inproceedings{lin2023mmst,
+  title={MMST-ViT: Climate Change-aware Crop Yield Prediction via Multi-Modal Spatial-Temporal Vision Transformer},
+  author={Lin, Fudong and Crawford, Summer and Guillot, Kaleb and Zhang, Yihe and Chen, Yan and Yuan, Xu and others},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+  year={2023}
 }
 ```
 
