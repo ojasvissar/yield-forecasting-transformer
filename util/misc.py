@@ -314,7 +314,7 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch,
                 'scaler': loss_scaler.state_dict(),
-                'args': args,
+                'args': vars(args),  # plain dict so torch.load works with weights_only=True
             }
 
             save_on_master(to_save, checkpoint_path)
