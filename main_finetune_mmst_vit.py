@@ -369,19 +369,20 @@ def train_one_epoch(model: torch.nn.Module,
             lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader_sentinel) + epoch, args)
 
 
-        # satellited imagery
-        x = x[0].to(device, non_blocking=True)
+        # satellite imagery: augment on the CPU, then move the fixed-size 224x224 tiles to the device.
+        # Random crops produce differently sized tensors every step, which the MPS caching allocator
+        # keeps around, so augmenting on the device grows memory without bound.
+        x = x[0]
+        b, t, g, _, _, _ = x.shape
+        x = rearrange(x, 'b t g h w c -> (b t g) c h w')
+        x, _ = data_wrapper(x)
+        x = rearrange(x, '(b t g) c h w -> b t g c h w', b=b, t=t, g=g).to(device, non_blocking=True)
+
         # short- and long-term weather variables
         ys = y[0].to(device, non_blocking=True)
         yl = y[1].to(device, non_blocking=True)
         # USDA
         z = z[0].to(device, non_blocking=True)
-
-        b, t, g, _, _, _ = x.shape
-        x = rearrange(x, 'b t g h w c -> (b t g) c h w')
-        x, _ = data_wrapper(x)
-
-        x = rearrange(x, '(b t g) c h w -> b t g c h w', b=b, t=t, g=g)
 
 
         z_hat = model(x, ys=ys, yl=yl)
@@ -442,8 +443,12 @@ def evaluate(model: torch.nn.Module, data_loader_sentinel: Iterable, data_loader
         print(" Eval [ {} / {}]  FIPS Code: {}  Number of Grids: {}  Max Mem: {}"
               .format(data_iter_step, total_step, fips, num_grids, f"{max_mem:.0f}"))
 
-        # satellite imagery
-        x = x[0].to(device, non_blocking=True)
+        # satellite imagery (preprocessed on the CPU, as in training)
+        x = x[0]
+        b, t, g, _, _, _ = x.shape
+        x = rearrange(x, 'b t g h w c -> (b t g) c h w')
+        x, _ = data_wrapper(x)
+        x = rearrange(x, '(b t g) c h w -> b t g c h w', b=b, t=t, g=g).to(device, non_blocking=True)
 
         # short- and long-term weather variables
         ys = y[0].to(device, non_blocking=True)
@@ -451,11 +456,6 @@ def evaluate(model: torch.nn.Module, data_loader_sentinel: Iterable, data_loader
 
         # USDA
         z = z[0].to(device, non_blocking=True)
-
-        b, t, g, _, _, _ = x.shape
-        x = rearrange(x, 'b t g h w c -> (b t g) c h w')
-        x, _ = data_wrapper(x)
-        x = rearrange(x, '(b t g) c h w -> b t g c h w', b=b, t=t, g=g)
 
         z_hat = model(x, ys=ys, yl=yl)
 
