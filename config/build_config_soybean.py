@@ -1,58 +1,60 @@
+#!/usr/bin/env python
+"""
+Build the soybean data index files (data/soybean_{train,val}.json).
+
+Each entry lists, for one county-year, the Sentinel-2 files for the growing
+season, the daily HRRR files for April-September, the monthly HRRR files for
+the `long_term_years` years *before* the prediction year (the paper uses the
+previous three years), and the USDA file with the target yield.
+
+Usage (from the repository root):
+    python -m config.build_config_soybean
+    python -m config.build_config_soybean --long_term_years 3 --fips 17091 19117
+"""
+
+import argparse
 import json
+import os
 
 import pandas as pd
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def build_soybean_train(target_fips=None):
-    csv_path = "./../input/county_info_2021.csv"
+# the 10 counties used by the default index
+DEFAULT_FIPS = ["22007", "22121", "22043", "22107", "28089", "28015", "17091", "17155", "19117", "19135"]
+
+
+def build_index(year, csv_path, out_path, target_fips=None, long_term_years=3):
     df = pd.read_csv(csv_path)
 
     if target_fips:
-        df = df[df["FIPS"].isin(target_fips)]
+        df = df[df["FIPS"].isin([int(f) for f in target_fips])]
 
-    counties = df.to_json(orient='records', lines=False)
-    counties = json.loads(counties)
+    counties = json.loads(df.to_json(orient='records', lines=False))
+    data = [get_json_obj(year, county_info, long_term_years) for county_info in counties]
 
-    path = "./../data/soybean_train.json"
-
-    data = []
-    for county_info in counties:
-        obj = get_json_obj(2021, county_info)
-        data.append(obj)
-
-    with open(path, "x") as write_file:
-        # write the data to the file in JSON format
+    with open(out_path, "w") as write_file:
         json.dump(data, write_file)
+    return data
 
 
-def build_soybean_val(target_fips=None):
-    csv_path = "./../input/county_info_2022.csv"
-    df = pd.read_csv(csv_path)
-
-    if target_fips:
-        df = df[df["FIPS"].isin(target_fips)]
-
-    counties = df.to_json(orient='records', lines=False)
-    counties = json.loads(counties)
-
-    path = "./../data/soybean_val.json"
-
-    data = []
-    for county_info in counties:
-        obj = get_json_obj(2022, county_info)
-        data.append(obj)
-
-    with open(path, "x") as write_file:
-        # write the data to the file in JSON format
-        json.dump(data, write_file)
+def build_soybean_train(target_fips=None, long_term_years=3):
+    return build_index(2021, os.path.join(ROOT, "input/county_info_2021.csv"),
+                       os.path.join(ROOT, "data/soybean_train.json"), target_fips, long_term_years)
 
 
-def get_json_obj(year, county_info):
+def build_soybean_val(target_fips=None, long_term_years=3):
+    return build_index(2022, os.path.join(ROOT, "input/county_info_2022.csv"),
+                       os.path.join(ROOT, "data/soybean_val.json"), target_fips, long_term_years)
+
+
+def get_json_obj(year, county_info, long_term_years=3):
     fips, county, state = str(county_info["FIPS"]), county_info["County"], county_info["State"]
 
     short_term = get_short_HRRR_obj(state, fips, year, months=[i for i in range(4, 10)])
 
-    long_term_years = ["2017", "2018", "2019", "2020", "2021"]
+    # only years before the prediction year: the current year's monthly data would leak the target season
+    long_term_years = [str(y) for y in range(year - long_term_years, year)]
     long_term = get_long_HRRR_obj(state, fips, years=long_term_years)
 
     obj = {
@@ -103,8 +105,12 @@ def get_long_HRRR_obj(state, fips, years, months=[i + 1 for i in range(12)]):
 
 
 if __name__ == '__main__':
-    target_fips = ["22007", "22121", "22043", "22107", "28089", "28015", "17091", "17155", "19117", "19135"]
-    target_fips = list(map(int, target_fips))
+    parser = argparse.ArgumentParser('Build soybean data index files')
+    parser.add_argument('--fips', nargs='+', default=DEFAULT_FIPS, help='County FIPS codes to include')
+    parser.add_argument('--long_term_years', type=int, default=3,
+                        help='Number of years before the prediction year used as long-term climate input')
+    args = parser.parse_args()
 
-    build_soybean_train(target_fips=target_fips)
-    build_soybean_val(target_fips=target_fips)
+    for build in (build_soybean_train, build_soybean_val):
+        data = build(target_fips=args.fips, long_term_years=args.long_term_years)
+        print(f"{build.__name__}: {len(data)} counties")

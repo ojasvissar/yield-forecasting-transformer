@@ -126,6 +126,17 @@ Verify model instantiation without data:
 python test_model.py
 ```
 
+## Data Index
+
+`data/soybean_train.json` (2021) and `data/soybean_val.json` (2022) list, for each county, the files the
+loaders read. Long-term climate input is the monthly HRRR data from the **three years before** the
+prediction year, as in the paper (e.g. 2018–2020 for 2021). Rebuild them with:
+
+```bash
+python -m config.build_config_soybean                      # default 10 counties, 3 years
+python -m config.build_config_soybean --fips 17091 19117 --long_term_years 3
+```
+
 ## Data Format
 
 ### Sentinel-2 Imagery

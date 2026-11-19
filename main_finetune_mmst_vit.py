@@ -262,7 +262,12 @@ def main(args):
         pvt.to(device)
         pvt.eval()
 
-    model = MMSTViT(out_dim=2, pvt_backbone=pvt, context_dim=9, dim=args.embed_dim, batch_size=args.batch_size)
+    # number of long-term climate years comes from the index files (see config/build_config_soybean.py)
+    with open(args.data_file_train) as f:
+        num_year = len(json.load(f)[0]["data"]["HRRR"]["long_term"])
+
+    model = MMSTViT(out_dim=2, pvt_backbone=pvt, context_dim=9, dim=args.embed_dim, batch_size=args.batch_size,
+                    num_year=num_year)
     model.to(device)
 
     model_without_ddp = model
