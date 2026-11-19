@@ -126,6 +126,22 @@ Verify model instantiation without data:
 python test_model.py
 ```
 
+## Data
+
+The repo only holds index files; the data comes from
+[Tiny CropNet](https://huggingface.co/datasets/fudong03/Tiny-CropNet) (~358 GB in full).
+`download_data.py` fetches just the files the index references into `./data/TinyCropNet`:
+
+```bash
+python download_data.py                                  # USDA + HRRR weather (~1.9 GB)
+python download_data.py --modalities sentinel            # Sentinel-2 imagery, indexed counties only (~1 GB)
+```
+
+Each Sentinel-2 file covers a whole state for a quarter (~4 GB). The script reads them remotely with
+HTTP range requests and keeps only the indexed counties and the 1st-of-month images the loader uses;
+`--full_sentinel` downloads the complete files (~59 GB for the default index) instead.
+Pass `--root_dir ./data/TinyCropNet` to the training scripts.
+
 ## Data Index
 
 `data/soybean_train.json` (2021) and `data/soybean_val.json` (2022) list, for each county, the files the
@@ -140,8 +156,9 @@ python -m config.build_config_soybean --fips 17091 19117 --long_term_years 3
 ## Data Format
 
 ### Sentinel-2 Imagery
-- Format: HDF5 files containing monthly satellite imagery
-- Shape: `(T, G, C, H, W)` - Time, Grids, Channels, Height, Width
+- Format: HDF5, one file per state and quarter: `<FIPS>/<YYYY-MM-DD>/data` holds a county's
+  `(G, 384, 384, 3)` uint8 tiles (G = number of 9×9 km grid cells), taken on the 1st and 15th of each month
+- Loader output: `(T, G, H, W, C)` with the 1st-of-month images for April–September (T = 6)
 
 ### HRRR Weather Data
 - Format: CSV files with daily/monthly meteorological variables
