@@ -8,3 +8,4 @@ einops>=0.6.1
 Pillow>=10.0.0
 scipy>=1.10.0
 tensorboard>=2.13.0
+streamlit>=1.40.0
