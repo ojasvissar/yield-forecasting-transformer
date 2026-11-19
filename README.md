@@ -108,6 +108,11 @@ python main_finetune_mmst_vit.py \
     --output_dir ./output_dir/mmst_vit
 ```
 
+Fine-tuning back-propagates through the backbone for every tile of a county (up to 6 × 31 = 186
+tiles in the default index). On machines with ≤16 GB of memory add `--grad_checkpointing`: gradients
+are identical, peak memory is bounded by one `--batch_size` chunk of tiles (measured 5.8 → 2.2 GB for
+72 tiles), at the cost of one extra backbone forward per step.
+
 ### 3. Evaluation
 
 ```bash

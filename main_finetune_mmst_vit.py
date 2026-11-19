@@ -64,6 +64,8 @@ def get_args_parser():
     parser.add_argument('--accum_iter', default=1, type=int,
                         help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
     parser.add_argument('--input_size', default=224, type=int, help='images input size')
+    parser.add_argument('--grad_checkpointing', action='store_true',
+                        help='Recompute backbone activations in backward to cap memory (for large counties / small GPUs)')
 
     parser.add_argument('--norm_pix_loss', action='store_true',
                         help='Use (per-patch) normalized pixels as targets for computing loss')
@@ -267,7 +269,7 @@ def main(args):
         num_year = len(json.load(f)[0]["data"]["HRRR"]["long_term"])
 
     model = MMSTViT(out_dim=2, pvt_backbone=pvt, context_dim=9, dim=args.embed_dim, batch_size=args.batch_size,
-                    num_year=num_year)
+                    num_year=num_year, grad_checkpointing=args.grad_checkpointing)
     model.to(device)
 
     model_without_ddp = model

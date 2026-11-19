@@ -42,3 +42,16 @@ def test_mmst_vit_handles_more_grids_than_backbone_batch(pvt):
     with torch.no_grad():
         out = model(torch.randn(1, 6, 7, 3, 224, 224), ys=torch.randn(1, 6, 7, 28, 9), yl=torch.randn(1, 3, 12, 9))
     assert out.shape == (1, 2)
+
+
+def test_grad_checkpointing_gives_identical_gradients():
+    def grads(checkpointing):
+        torch.manual_seed(0)
+        model = MMSTViT(out_dim=2, pvt_backbone=PVTSimCLR("pvt_tiny", out_dim=512, context_dim=9), dim=512,
+                        num_year=3, batch_size=4, grad_checkpointing=checkpointing).train()
+        torch.manual_seed(1)
+        x, ys, yl = torch.randn(1, 6, 1, 3, 224, 224), torch.randn(1, 6, 1, 28, 9), torch.randn(1, 3, 12, 9)
+        model(x, ys=ys, yl=yl).sum().backward()
+        return torch.cat([p.grad.flatten() for p in model.parameters() if p.grad is not None])
+
+    assert torch.allclose(grads(False), grads(True))

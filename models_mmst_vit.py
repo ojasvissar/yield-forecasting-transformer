@@ -11,6 +11,7 @@ This module implements the main MMST-ViT architecture that combines:
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 from einops import rearrange, repeat
 
 from attention import SpatialTransformer, TemporalTransformer
@@ -34,6 +35,8 @@ class MMSTViT(nn.Module):
         context_dim: Dimension of weather context features
         dim: Model embedding dimension
         batch_size: Batch size for processing grids
+        grad_checkpointing: Recompute backbone activations during backward instead of storing them,
+            so training memory is bounded by one chunk of `batch_size` tiles rather than a whole county
         depth: Number of transformer layers
         heads: Number of attention heads
         pool: Pooling type ('cls' for class token, 'mean' for mean pooling)
@@ -61,12 +64,14 @@ class MMSTViT(nn.Module):
         dropout: float = 0.,
         emb_dropout: float = 0.,
         scale_dim: int = 4,
+        grad_checkpointing: bool = False,
     ):
         super().__init__()
 
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
 
         self.batch_size = batch_size
+        self.grad_checkpointing = grad_checkpointing
         self.pvt_backbone = pvt_backbone
 
         self.proj_context = nn.Linear(num_year * num_long_term_seq * context_dim, num_short_term_seq * dim)
@@ -113,7 +118,10 @@ class MMSTViT(nn.Module):
             x_tmp = x[start:end]
             ys_tmp = ys[start:end]
 
-            x_hat_tmp = self.pvt_backbone(x_tmp, context=ys_tmp)
+            if self.grad_checkpointing and self.training and torch.is_grad_enabled():
+                x_hat_tmp = checkpoint(self.pvt_backbone, x_tmp, ys_tmp, use_reentrant=False)
+            else:
+                x_hat_tmp = self.pvt_backbone(x_tmp, context=ys_tmp)
             x_hat = torch.cat([x_hat, x_hat_tmp], dim=0)
 
         return x_hat
