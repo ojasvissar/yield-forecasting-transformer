@@ -67,10 +67,10 @@ class SentinelDataset(Dataset):
         for file_path in file_paths:
             with h5py.File(file_path, 'r') as hf:
                 groups = hf[fips_code]
-                for i, d in enumerate(groups.keys()):
-                    # Only consider the 1st day of each month
-                    # Note: HDF5 contains 1st and 15th of each month (e.g., "04-01" and "04-15")
-                    if i % 2 == 0:
+                # Only consider the 1st day of each month
+                # Note: HDF5 contains 1st and 15th of each month (e.g., "2021-04-01" and "2021-04-15")
+                for d in sorted(groups.keys()):
+                    if d.endswith("-01"):
                         grids = groups[d]["data"]
                         grids = np.asarray(grids)
                         temporal_list.append(torch.from_numpy(grids))

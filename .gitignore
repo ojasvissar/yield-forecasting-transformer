@@ -61,10 +61,8 @@ checkpoints/
 runs/
 logs/
 
-# Data files (uncomment if needed)
-# *.csv
-# *.json
-# data/
+# Downloaded dataset (see download_data.py)
+data/TinyCropNet/
 
 # Environment variables
 .env
