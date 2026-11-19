@@ -186,8 +186,9 @@ def tensorboard_scalars(run_dir, _mtime):
     return pd.DataFrame(rows)
 
 
-def line_chart(df, x, y, color=None, x_title=None, y_title=None, height=260):
-    enc = dict(x=alt.X(x, title=x_title or x), y=alt.Y(y, title=y_title or y, scale=alt.Scale(zero=False)),
+def line_chart(df, x, y, color=None, x_title=None, y_title=None, height=260, log_y=False):
+    y_scale = alt.Scale(type="log") if log_y else alt.Scale(zero=False)
+    enc = dict(x=alt.X(x, title=x_title or x), y=alt.Y(y, title=y_title or y, scale=y_scale),
                tooltip=[x, alt.Tooltip(y, format=".4g")] + ([color] if color else []))
     if color:
         enc["color"] = alt.Color(color, scale=alt.Scale(range=SERIES), legend=alt.Legend(orient="top", title=None))
@@ -325,7 +326,9 @@ with tab_pipe:
             epochs = st.number_input("Epochs", 1, 500, 10, key=f"ep_{stage}")
             extra = ["--device", dev, "--epochs", str(epochs), "--warmup_epochs", str(max(1, epochs // 5))]
             if stage == "mmst_vit":
-                extra += ["--grad_checkpointing"]  # bounds memory on large counties; same gradients
+                # checkpointed 16-tile chunks keep a 186-tile county at ~4.5 GB; same gradients.
+                # A step is one county either way, so the LR is set explicitly rather than scaled by chunk size.
+                extra += ["--grad_checkpointing", "--batch_size", "16", "--lr", "2.5e-4"]
                 if pre_ckpts:
                     extra += ["--pvt_simclr", pre_ckpts[-1]]
             if running:
@@ -537,7 +540,8 @@ with tab_results:
             v[1].metric("R²", f"{last.r2:.3f}")
             v[2].metric("Pearson r", f"{last['corr']:.3f}")
             if mets["epoch"].notna().sum() > 1:
-                long = mets.melt(id_vars="epoch", value_vars=["r2", "corr"], var_name="metric")
+                long = mets.rename(columns={"corr": "Pearson r", "r2": "R²"}) \
+                    .melt(id_vars="epoch", value_vars=["Pearson r", "R²"], var_name="metric")
                 st.altair_chart(line_chart(long, "epoch:Q", "value:Q", "metric:N", "Epoch", "Score"), width="stretch")
 
         if os.path.exists(run["predictions"]):
@@ -545,20 +549,24 @@ with tab_results:
             names = {e["FIPS"]: f"{e['county'].title()}, {e['state']}" for e in index}
             pred["County"] = pred.fips.map(names)
             st.subheader("Predicted vs actual yield (validation)")
+            st.caption("Dashed line = perfect prediction. Points on a flat horizontal band mean the model "
+                       "mostly predicts the average yield.")
             lo, hi = float(pred[["true_yield", "pred_yield"]].min().min()) * 0.95, \
                 float(pred[["true_yield", "pred_yield"]].max().max()) * 1.05
             ref = alt.Chart(pd.DataFrame({"v": [lo, hi]})).mark_line(color="#898781", strokeDash=[4, 4]) \
-                .encode(x="v:Q", y="v:Q")
+                .encode(x=alt.X("v:Q", scale=alt.Scale(domain=[lo, hi], zero=False)),
+                        y=alt.Y("v:Q", scale=alt.Scale(domain=[lo, hi], zero=False)))
             dots = alt.Chart(pred).mark_circle(size=90, color=SERIES[0], stroke="white", strokeWidth=2).encode(
-                x=alt.X("true_yield:Q", title="Actual yield (bu/acre)", scale=alt.Scale(domain=[lo, hi])),
-                y=alt.Y("pred_yield:Q", title="Predicted yield (bu/acre)", scale=alt.Scale(domain=[lo, hi])),
+                x=alt.X("true_yield:Q", title="Actual yield (bu/acre)", scale=alt.Scale(domain=[lo, hi], zero=False)),
+                y=alt.Y("pred_yield:Q", title="Predicted yield (bu/acre)", scale=alt.Scale(domain=[lo, hi], zero=False)),
                 tooltip=["County", alt.Tooltip("true_yield:Q", format=".1f"), alt.Tooltip("pred_yield:Q", format=".1f")])
             st.altair_chart((ref + dots).properties(height=360), width="stretch")
             st.dataframe(pred, hide_index=True, width="stretch")
 
         if "train_loss" in log:
             st.subheader("Training loss per epoch")
-            st.altair_chart(line_chart(log, "epoch:Q", "train_loss:Q", x_title="Epoch", y_title="Train loss"),
+            st.altair_chart(line_chart(log, "epoch:Q", "train_loss:Q", x_title="Epoch", y_title="Train loss (log)",
+                                       log_y=True),
                             width="stretch")
 
         if not tb.empty:
