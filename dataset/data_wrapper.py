@@ -9,7 +9,6 @@ augmentations for contrastive learning pre-training.
 import torch
 import torchvision.transforms as transforms
 from einops import rearrange
-from sklearn import preprocessing
 
 from dataset.sentinel_loader import SentinelDataset
 
@@ -54,7 +53,8 @@ class DataWrapper:
         Returns:
             xi, xj: Two augmented views of the input
         """
-        x = x.to(torch.float32)
+        # uint8 tiles -> [0, 1], the range pre-training uses and Normalize below expects
+        x = x.to(torch.float32) / 255.0
         xi = self.transform(x)
         xj = self.transform(x)
         return xi, xj
@@ -81,41 +81,10 @@ class DataWrapper:
         ])
 
 
-class ScalarNorm:
-    """
-    Standard scalar normalization using sklearn's StandardScaler.
-    
-    Normalizes features to zero mean and unit variance.
-    """
-    
-    def __init__(self):
-        self.norm = preprocessing.StandardScaler()
-
-    def __call__(self, x, reverse: bool = False) -> torch.Tensor:
-        """
-        Apply or reverse normalization.
-        
-        Args:
-            x: Input array
-            reverse: If True, apply inverse transform
-            
-        Returns:
-            Normalized/denormalized tensor
-        """
-        if not reverse:
-            x = self.norm.fit_transform(x)
-        else:
-            x = self.norm.inverse_transform(x)
-
-        x = torch.from_numpy(x)
-        x = x.to(torch.float32)
-        return x
-
-
 if __name__ == '__main__':
     """Test the DataWrapper."""
-    root_dir = "/mnt/data/Crop"
-    data_file = "./../data/soybean_train.json"
+    root_dir = "./data/TinyCropNet"
+    data_file = "./data/soybean_train.json"
     
     dataset = SentinelDataset(root_dir, data_file)
     loader = torch.utils.data.DataLoader(dataset, batch_size=1)

@@ -54,7 +54,8 @@ class SimCLRDataTransform(object):
                                               transforms.RandomGrayscale(p=0.2),
                                               transforms.GaussianBlur(kernel_size=self.kernel_size),
                                               transforms.ToTensor(),
-                                              # transforms.Normalize([0.466, 0.471, 0.380], [0.195, 0.194, 0.192]),
+                                              # same statistics as DataWrapper used in fine-tuning
+                                              transforms.Normalize([0.466, 0.471, 0.380], [0.195, 0.194, 0.192]),
                                               ])
         return data_transforms
 

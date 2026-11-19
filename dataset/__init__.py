@@ -10,12 +10,11 @@ This module provides data loaders for:
 from dataset.sentinel_loader import SentinelDataset
 from dataset.hrrr_loader import HRRRDataset
 from dataset.usda_loader import USDADataset
-from dataset.data_wrapper import DataWrapper, ScalarNorm
+from dataset.data_wrapper import DataWrapper
 
 __all__ = [
     'SentinelDataset',
     'HRRRDataset',
     'USDADataset',
     'DataWrapper',
-    'ScalarNorm',
 ]
