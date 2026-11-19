@@ -27,7 +27,6 @@ The model consists of three main components:
 yield-forecasting-transformer/
 ├── main_pretrain_mmst_vit.py   # Pre-training script (SimCLR contrastive learning)
 ├── main_finetune_mmst_vit.py   # Fine-tuning script (yield prediction)
-├── test_model.py               # Model verification script
 │
 ├── models_mmst_vit.py          # MMST-ViT model architecture
 ├── models_pvt_simclr.py        # PVT backbone with SimCLR projection head
@@ -58,6 +57,7 @@ yield-forecasting-transformer/
 ├── input/                      # County lists used to build the index
 │   └── county_info_{2021,2022}.csv
 │
+├── tests/                      # pytest suite (synthetic data, CPU)
 ├── docs/                       # Figures from the paper
 └── papers/                     # Reference paper (ICCV 2023)
 ```
@@ -70,7 +70,7 @@ Use a plain virtual environment so every package comes from pip:
 python -m venv venv
 source venv/bin/activate      # Windows: .\venv\Scripts\activate
 pip install -r requirements.txt
-python test_model.py          # smoke test, no data needed
+pip install pytest && pytest   # tests run on synthetic data, no download needed
 ```
 
 > **Conda users:** don't install into a conda base environment. pip's `torch` bundles its own
@@ -118,13 +118,22 @@ python main_finetune_mmst_vit.py \
     --data_file_val ./data/soybean_val.json
 ```
 
-### 4. Model Testing
-
-Verify model instantiation without data:
+## Testing
 
 ```bash
-python test_model.py
+pip install pytest
+pytest
 ```
+
+The suite (`tests/`, ~40 s on CPU) builds a tiny synthetic dataset with the real file layout and checks:
+
+- model forward passes and output shapes
+- the loaders (1st-of-month imagery, weather tensors, USDA targets) and that the index never
+  uses the prediction year as climate history
+- an end-to-end run: pre-training → fine-tuning with the pre-trained backbone → `--eval`,
+  including the saved metrics and predictions
+
+GitHub Actions runs it on every push and pull request.
 
 ## Data
 
